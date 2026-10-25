@@ -56,9 +56,9 @@ namespace video::tone
     }
 
     // Nothing to apply: the presenter keeps its plain pipeline.
-    inline bool Neutral(int32_t brightness, bool useRamp)
+    inline bool Neutral(int32_t brightness, bool useRamp, bool neutralColors = false)
     {
-        return std::clamp(brightness, kBrightnessMin, kBrightnessMax) == 0 && !useRamp;
+        return std::clamp(brightness, kBrightnessMin, kBrightnessMax) == 0 && !useRamp && !neutralColors;
     }
 
     // out[k][c]: what framebuffer value k/255 of channel c (red, green, blue)
@@ -69,15 +69,27 @@ namespace video::tone
     };
 
     // The table for a Brightness step and, when `ramp` is given, the 360's
-    // display ramp before it.
-    inline Lut BuildLut(int32_t brightness, const display_gamma::Table* ramp)
+    // display ramp before it, plus optional neutral color compensation.
+    inline Lut BuildLut(int32_t brightness, const display_gamma::Table* ramp, bool neutralColors = false)
     {
         Lut lut;
         for (uint32_t k = 0; k < 256; k++)
             for (uint32_t c = 0; c < 3; c++)
             {
                 double v = ramp ? ramp->entry[k][c] / 1023.0 : k / 255.0;
-                lut.entry[k][c] = float(ApplyBrightness(v, brightness));
+                v = ApplyBrightness(v, brightness);
+                if (neutralColors)
+                {
+                    // The game crushes Blue (~0.44) and pushes Red/Green warm tones.
+                    // Compensate by cooling down Red/Green and restoring Blue vibrancy.
+                    if (c == 0) // Red
+                        v = std::pow(v, 1.05);
+                    else if (c == 1) // Green
+                        v = std::pow(v, 1.02);
+                    else if (c == 2) // Blue
+                        v = std::min(1.0, std::pow(v, 0.82) * 1.15);
+                }
+                lut.entry[k][c] = float(v);
             }
         return lut;
     }

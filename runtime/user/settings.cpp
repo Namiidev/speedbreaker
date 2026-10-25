@@ -264,6 +264,10 @@ namespace settings
               .table = "video", .key = "xbox_display_gamma", .label = "Xbox 360 Display Gamma",
               .description = "The gamma ramp the game itself sets for a real Xbox 360's TV output: a little deeper shadows and brighter mid-tones, as on the console. Off: the flatter picture of SpeedBreaker 0.1.3 and earlier.",
               .env = "NFSMW_DISPLAY_GAMMA", .defaultValue = 1 },
+            { .id = Id::NeutralColors, .category = Category::Display, .type = Type::Bool, .apply = Apply::Live,
+              .table = "video", .key = "neutral_colors", .label = "Neutral Colors",
+              .description = "Counteract the game's sepia post-processing filter by balancing the RGB channels: restores vibrant blues and natural daylight whites without the yellow tint.",
+              .env = "NFSMW_NEUTRAL_COLORS", .defaultValue = 0 },
             { .id = Id::Sharpening, .category = Category::Graphics, .type = Type::Float, .apply = Apply::Live,
               .table = "video", .key = "sharpening", .label = "Sharpening",
               .description = kFsr1Offered
