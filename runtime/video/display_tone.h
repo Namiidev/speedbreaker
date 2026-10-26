@@ -56,9 +56,9 @@ namespace video::tone
     }
 
     // Nothing to apply: the presenter keeps its plain pipeline.
-    inline bool Neutral(int32_t brightness, bool useRamp, bool neutralColors = false)
+    inline bool Neutral(int32_t brightness, bool useRamp, bool coolerColors = false)
     {
-        return std::clamp(brightness, kBrightnessMin, kBrightnessMax) == 0 && !useRamp && !neutralColors;
+        return std::clamp(brightness, kBrightnessMin, kBrightnessMax) == 0 && !useRamp && !coolerColors;
     }
 
     // out[k][c]: what framebuffer value k/255 of channel c (red, green, blue)
@@ -69,8 +69,8 @@ namespace video::tone
     };
 
     // The table for a Brightness step and, when `ramp` is given, the 360's
-    // display ramp before it, plus optional neutral color compensation.
-    inline Lut BuildLut(int32_t brightness, const display_gamma::Table* ramp, bool neutralColors = false)
+    // display ramp before it, plus optional cooler color compensation.
+    inline Lut BuildLut(int32_t brightness, const display_gamma::Table* ramp, bool coolerColors = false)
     {
         Lut lut;
         for (uint32_t k = 0; k < 256; k++)
@@ -78,16 +78,15 @@ namespace video::tone
             {
                 double v = ramp ? ramp->entry[k][c] / 1023.0 : k / 255.0;
                 v = ApplyBrightness(v, brightness);
-                if (neutralColors)
+                if (coolerColors)
                 {
-                    // The game crushes Blue (~0.44) and pushes Red/Green warm tones.
-                    // Compensate by cooling down Red/Green and restoring Blue vibrancy.
+                    // Cooler picture: lower red and green, raise blue.
                     if (c == 0) // Red
                         v = std::pow(v, 1.05);
                     else if (c == 1) // Green
                         v = std::pow(v, 1.02);
                     else if (c == 2) // Blue
-                        v = std::min(1.0, std::pow(v, 0.82) * 1.15);
+                        v = std::pow(v, 0.82);
                 }
                 lut.entry[k][c] = float(v);
             }
