@@ -30,11 +30,11 @@ namespace game::photo_mode
         std::atomic<bool> s_hideHud{ true };
         std::atomic<bool> s_showOverlay{ true };
 
-        // Camera pose in world coordinates
+        // Camera pose in world coordinates (+X right, +Y up, +Z forward)
         hfr::blend::V3 s_pos{ 0.0f, 0.0f, 0.0f };
-        float s_yaw = 0.0f;    // Radians around global Z
+        float s_yaw = 0.0f;    // Radians around global Y (+Y up)
         float s_pitch = 0.0f;  // Radians elevation (clamped)
-        float s_roll = 0.0f;   // Radians camera tilt
+        float s_roll = 0.0f;   // Radians camera tilt around Forward vector
         float s_fov = 10923.0f; // 16-bit angle (~60 deg)
 
         // Keyboard states
@@ -159,16 +159,20 @@ namespace game::photo_mode
 
         s_pos = hfr::blend::ViewPosition(m);
 
-        // Forward vector from Column 2 (transposed camera orientation)
-        hfr::blend::V3 f = { m[2], m[6], m[10] };
-        float flen = std::sqrt(f.x * f.x + f.y * f.y + f.z * f.z);
+        // In EAGL / NFSMW view matrix, columns 0, 1, 2 are Right, Up, Forward
+        const hfr::blend::V3 R = { m[0], m[4], m[8] };
+        const hfr::blend::V3 U = { m[1], m[5], m[9] };
+        const hfr::blend::V3 F = { m[2], m[6], m[10] };
+
+        float flen = std::sqrt(F.x * F.x + F.y * F.y + F.z * F.z);
         if (flen > 1e-6f)
         {
-            f.x /= flen;
-            f.y /= flen;
-            f.z /= flen;
-            s_pitch = std::asin(std::clamp(f.z, -0.999f, 0.999f));
-            s_yaw = std::atan2(f.x, f.y);
+            const float fx = F.x / flen;
+            const float fy = F.y / flen;
+            const float fz = F.z / flen;
+            // NFSMW coordinates: +X right, +Y up, +Z forward
+            s_pitch = std::asin(std::clamp(fy, -0.999f, 0.999f));
+            s_yaw = std::atan2(fx, fz);
         }
         else
         {
@@ -176,7 +180,16 @@ namespace game::photo_mode
             s_yaw = 0.0f;
         }
 
-        s_roll = 0.0f;
+        // Reconstruct base horizontal axes at roll = 0
+        const float cp = std::cos(s_pitch), sp = std::sin(s_pitch);
+        const float cy = std::cos(s_yaw), sy = std::sin(s_yaw);
+        const hfr::blend::V3 R0 = { cy, 0.0f, -sy };
+        const hfr::blend::V3 U0 = { -sy * sp, cp, -cy * sp };
+
+        // Decompose roll cleanly from current Right vector
+        const float dotR0 = R.x * R0.x + R.y * R0.y + R.z * R0.z;
+        const float dotU0 = R.x * U0.x + R.y * U0.y + R.z * U0.z;
+        s_roll = std::atan2(dotU0, dotR0);
 
         const uint16_t fov = PPC_LOAD_U16(cameraAddress + 196);
         if (fov >= 1000 && fov <= 32000)
@@ -196,12 +209,14 @@ namespace game::photo_mode
         const float cy = std::cos(s_yaw), sy = std::sin(s_yaw);
         const float cr = std::cos(s_roll), sr = std::sin(s_roll);
 
-        // Basis vectors in world space
-        const hfr::blend::V3 F = { cp * sy, cp * cy, sp };
-        const hfr::blend::V3 R0 = { cy, -sy, 0.0f };
-        const hfr::blend::V3 U0 = { -sp * sy, -sp * cy, cp };
+        // Forward vector in NFSMW (+X right, +Y up, +Z forward)
+        const hfr::blend::V3 F = { sy * cp, sp, cy * cp };
+        // Horizontal right vector (at roll = 0)
+        const hfr::blend::V3 R0 = { cy, 0.0f, -sy };
+        // Up vector (at roll = 0) = F x R0
+        const hfr::blend::V3 U0 = { -sy * sp, cp, -cy * sp };
 
-        // Apply roll
+        // Apply roll around F
         const hfr::blend::V3 R = { R0.x * cr + U0.x * sr, R0.y * cr + U0.y * sr, R0.z * cr + U0.z * sr };
         const hfr::blend::V3 U = { -R0.x * sr + U0.x * cr, -R0.y * sr + U0.y * cr, -R0.z * sr + U0.z * cr };
 
@@ -286,14 +301,17 @@ namespace game::photo_mode
         // Position displacement
         const float cp = std::cos(s_pitch), sp = std::sin(s_pitch);
         const float cy = std::cos(s_yaw), sy = std::sin(s_yaw);
+        const float cr = std::cos(s_roll), sr = std::sin(s_roll);
 
-        const hfr::blend::V3 F = { cp * sy, cp * cy, sp };
-        const hfr::blend::V3 R = { cy, -sy, 0.0f };
-        const hfr::blend::V3 U = { 0.0f, 0.0f, 1.0f };
+        const hfr::blend::V3 F = { sy * cp, sp, cy * cp };
+        const hfr::blend::V3 R0 = { cy, 0.0f, -sy };
+        const hfr::blend::V3 U0 = { -sy * sp, cp, -cy * sp };
+        const hfr::blend::V3 R = { R0.x * cr + U0.x * sr, R0.y * cr + U0.y * sr, R0.z * cr + U0.z * sr };
+        const hfr::blend::V3 U_world = { 0.0f, 1.0f, 0.0f };
 
-        s_pos.x += (F.x * moveFwd + R.x * moveRight + U.x * moveUp) * speed * dt;
-        s_pos.y += (F.y * moveFwd + R.y * moveRight + U.y * moveUp) * speed * dt;
-        s_pos.z += (F.z * moveFwd + R.z * moveRight + U.z * moveUp) * speed * dt;
+        s_pos.x += (F.x * moveFwd + R.x * moveRight + U_world.x * moveUp) * speed * dt;
+        s_pos.y += (F.y * moveFwd + R.y * moveRight + U_world.y * moveUp) * speed * dt;
+        s_pos.z += (F.z * moveFwd + R.z * moveRight + U_world.z * moveUp) * speed * dt;
     }
 
     bool HandleEvent(const SDL_Event& e)
