@@ -19,6 +19,7 @@
 #include "present_schedule.h"
 #include "hfr_schedule.h"
 #include <game/hfr.h>
+#include <game/photo_mode.h>
 #include "swapchain_use.h"
 #include "picture_fit.h"
 #include "frame_rate.h"
@@ -5043,6 +5044,8 @@ void main()
         SDL_Event e;
         while (SDL_PollEvent(&e))
         {
+            if (game::photo_mode::HandleEvent(e))
+                continue;
             ui::ProcessEvent(e);
             hid::HandleEvent(e);
             if (e.type == SDL_EVENT_QUIT || e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
@@ -5123,7 +5126,12 @@ void main()
         }
         CheckSwapchain();
         SuspendAudit();
-        hid::SetBlocked(ui::CapturingInput());
+        static auto s_lastPhotoUpdate = std::chrono::steady_clock::now();
+        auto nowPhotoUpdate = std::chrono::steady_clock::now();
+        double photoDt = std::chrono::duration<double>(nowPhotoUpdate - s_lastPhotoUpdate).count();
+        s_lastPhotoUpdate = nowPhotoUpdate;
+        game::photo_mode::Update(photoDt);
+        hid::SetBlocked(ui::CapturingInput() || game::photo_mode::IsActive());
         hid::Update();
         ApplySettings();
         MaybeRefreshNotice();

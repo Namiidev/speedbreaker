@@ -72,6 +72,7 @@
 #include "ultrawide.h"
 #include "front_end_matrix.h"
 #include "glare.h"
+#include "photo_mode.h"
 
 #include <kernel/function.h>
 
@@ -235,6 +236,15 @@ void UltrawideProjection(PPCRegister& r28, PPCRegister& f12, PPCRegister& f10)
 
 void UltrawideFrontEnd(PPCRegister& f13, PPCRegister& f0)
 {
+    if (game::photo_mode::ShouldHideHud())
+    {
+        f13.f64 = 0.0;
+        f0.f64 = 0.0;
+        s_frontEndX.store(0.0f, std::memory_order_relaxed);
+        s_frontEndY.store(0.0f, std::memory_order_relaxed);
+        ResendIfChanged(0.0f, 0.0f);
+        return;
+    }
     const Scales scale = s_scales.load(std::memory_order_relaxed);
     if (scale.x != 1.0f)
         ScaleRegister(f13, scale.x);
@@ -247,6 +257,12 @@ void UltrawideFrontEnd(PPCRegister& f13, PPCRegister& f0)
 
 void UltrawideMirror(PPCRegister& f1, PPCRegister& f2, PPCRegister& f3, PPCRegister& f4)
 {
+    if (game::photo_mode::ShouldHideHud())
+    {
+        f3.f64 = 0.0;
+        f4.f64 = 0.0;
+        return;
+    }
     const Scales scale = s_scales.load(std::memory_order_relaxed);
     if (scale.x != 1.0f)
     {

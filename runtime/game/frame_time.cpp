@@ -45,6 +45,7 @@
 #include <stdafx.h>
 #include "frame_time.h"
 #include "whole_vblanks.h"
+#include "photo_mode.h"
 
 #include <kernel/function.h>
 #include <video/presenter.h>
@@ -163,6 +164,11 @@ void WorldStepTime(PPCRegister& f10)
 // steps this frame runs, before the step runner's cap.
 void WorldSteps(PPCRegister& r30)
 {
+    if (game::photo_mode::ShouldFreezeWorld())
+    {
+        r30.u32 = 0;
+        r30.u64 = 0;
+    }
     s_line.steps = int(r30.u32);
     if (r30.u32 == 0)
         s_noStep.fetch_add(1, std::memory_order_relaxed);

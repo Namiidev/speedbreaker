@@ -45,6 +45,7 @@
 #include "hfr_blend.h"
 #include "hfr_grid.h"
 #include "frame_time.h"
+#include "photo_mode.h"
 
 #include <kernel/function.h>
 #include <kernel/write_watch.h>
@@ -1447,6 +1448,20 @@ SB_HOOK(sub_8243EAC0)
     // views as the real picture set them up (KeepView).
     if (KeepView(view))
         return;
+    if (view)
+    {
+        const uint32_t viewId = PPC_LOAD_U32(view + 4);
+        if (viewId == 1 || viewId == 2)
+        {
+            if (const uint32_t camera = PPC_LOAD_U32(view + 64))
+            {
+                if (game::photo_mode::NeedsCaptureInitialPose())
+                    game::photo_mode::CaptureInitialPose(base, camera);
+                if (game::photo_mode::IsActive())
+                    game::photo_mode::ApplyToCamera(base, camera);
+            }
+        }
+    }
     if (s_enabled && !s_inBetween.load(std::memory_order_acquire) && s_ownFraction.load(std::memory_order_acquire) == 0.0f && view)
         if (const uint32_t camera = PPC_LOAD_U32(view + 64))
         {

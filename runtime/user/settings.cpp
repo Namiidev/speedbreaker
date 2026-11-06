@@ -532,6 +532,10 @@ namespace settings
               .table = "game", .key = "language", .label = "Language",
               .description = "The language of the game's menus and race text: English (the USA disc's), or French, German, Italian, Spanish, Dutch, Swedish, Danish, Polish or Finnish, from the same disc's files. The movies and the speech stay in English, as the disc has them. The European (PAL) Spanish disc has Spanish movies and speech, and starts in Spanish; another language there keeps them in Spanish.",
               .env = "NFSMW_LANGUAGE", .defaultValue = double(game::language::kEnglish), .entries = kLanguageEntries },
+            { .id = Id::PhotoMode, .category = Category::Game, .type = Type::Bool, .apply = Apply::Live,
+              .table = "game", .key = "photo_mode", .label = "Photo Mode",
+              .description = "Free camera and photo mode. Press P or Back + R3 in-game to detach the camera, freeze physics and hide the HUD. F12 or X button captures a high-resolution screenshot to Pictures/SpeedBreaker.",
+              .env = "NFSMW_PHOTO_MODE", .defaultValue = 1 },
         };
         static_assert(std::size(kOptions) == kCount, "one row per settings::Id");
 

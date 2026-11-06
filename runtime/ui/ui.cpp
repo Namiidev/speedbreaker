@@ -18,6 +18,7 @@
 // FeedWheelNav: the input events the backend has queued this frame; on iOS also DragToScroll (the window under a
 // touch, its scroll and the active item).
 #include <imgui_internal.h>
+#include <game/photo_mode.h>
 #if defined(__APPLE__) && TARGET_OS_IOS
 #include <platform/ios_ui.h>
 #endif
@@ -1078,7 +1079,8 @@ namespace ui
             toastText = CurrentToastLocked();
         }
         bool toast = !toastText.empty();
-        if (!s_modal && !s_settingsOpen && !perf && !toast)
+        bool photoOverlay = game::photo_mode::IsActive() && game::photo_mode::ShouldShowOverlay();
+        if (!s_modal && !s_settingsOpen && !perf && !toast && !photoOverlay)
             return false;
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL3_NewFrame();
@@ -1144,6 +1146,8 @@ namespace ui
             else if (perf)
                 DrawPerfOverlay();
         }
+        if (photoOverlay)
+            game::photo_mode::DrawOverlay();
         if (toast)
             DrawToast(toastText);
         ImGui::Render();

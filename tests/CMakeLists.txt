@@ -440,6 +440,8 @@ if(WIN32)
     # The process-wide settings main makes first (platform/startup.h).
     sb_test(startup_test SOURCES ${RT}/platform/win32/startup.cpp)
 endif()
+# Photo mode camera kinematics, basis orthonormality and view position inversion.
+sb_test(photo_mode_test)
 # The guest vblank lock's closed-loop simulation (a tool more than a test).
 add_executable(vblank_lock_sim ${CMAKE_CURRENT_SOURCE_DIR}/vblank_lock_sim.cpp ${RT}/video/refresh_fit.cpp ${RT}/video/vblank_lock.cpp)
 target_include_directories(vblank_lock_sim PRIVATE ${RT})
