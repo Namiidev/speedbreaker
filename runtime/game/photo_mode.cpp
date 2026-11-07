@@ -188,22 +188,17 @@ namespace game::photo_mode
             s_yaw = 0.0f;
         }
 
-        // Reconstruct base horizontal axes at roll = 0
-        const float cp = std::cos(s_pitch), sp = std::sin(s_pitch);
-        const float cy = std::cos(s_yaw), sy = std::sin(s_yaw);
-        const hfr::blend::V3 R0 = { cy, 0.0f, -sy };
-        const hfr::blend::V3 U0 = { -sy * sp, cp, -cy * sp };
-
-        // Decompose roll cleanly from current Right vector
-        const float dotR0 = R.x * R0.x + R.y * R0.y + R.z * R0.z;
-        const float dotU0 = R.x * U0.x + R.y * U0.y + R.z * U0.z;
-        s_roll = std::atan2(dotU0, dotR0);
+        // Start level (roll = 0) so the camera is never tilted on activation
+        s_roll = 0.0f;
 
         const uint16_t fov = PPC_LOAD_U16(cameraAddress + 196);
         if (fov >= 1000 && fov <= 32000)
             s_fov = float(fov);
         else
             s_fov = 10923.0f;
+
+        fprintf(stderr, "[photo] Camara capturada: pos=(%.2f, %.2f, %.2f) yaw=%.1f deg pitch=%.1f deg fov=%.1f\n",
+                s_pos.x, s_pos.y, s_pos.z, s_yaw * 57.29578f, s_pitch * 57.29578f, s_fov * 360.0f / 65536.0f);
 
         s_needsCapture.store(false, std::memory_order_release);
     }
@@ -331,9 +326,8 @@ namespace game::photo_mode
             if (std::abs(ry) > 0.08f)
             {
                 float normRy = (ry > 0.0f ? (ry - 0.08f) : (ry + 0.08f)) / 0.92f;
-                // SDL stick UP is ry < 0. Adding normRy to s_pitch decreases s_pitch,
-                // which tilts camera UP in NFSMW's coordinate & projection system.
-                float pitchDelta = (s_invertLookY ? -1.0f : 1.0f) * normRy * 1.8f * dt;
+                // SDL stick UP is ry < 0. Pushing stick UP tilts camera UP (increasing pitch).
+                float pitchDelta = (s_invertLookY ? 1.0f : -1.0f) * normRy * 1.8f * dt;
                 s_pitch += pitchDelta;
                 s_pitch = std::clamp(s_pitch, -1.55f, 1.55f);
             }
@@ -349,7 +343,7 @@ namespace game::photo_mode
                 s_yaw += (s_invertLookX ? -1.0f : 1.0f) * s_stickLookX * 2.2f * dt;
             if (std::abs(s_stickLookY) > 0.05f)
             {
-                s_pitch += (s_invertLookY ? -1.0f : 1.0f) * s_stickLookY * 1.8f * dt;
+                s_pitch += (s_invertLookY ? 1.0f : -1.0f) * s_stickLookY * 1.8f * dt;
                 s_pitch = std::clamp(s_pitch, -1.55f, 1.55f);
             }
         }
@@ -369,12 +363,11 @@ namespace game::photo_mode
         const hfr::blend::V3 R0 = { cy, 0.0f, -sy };
         const hfr::blend::V3 U0 = { -sy * sp, cp, -cy * sp };
         const hfr::blend::V3 R = { R0.x * cr + U0.x * sr, R0.y * cr + U0.y * sr, R0.z * cr + U0.z * sr };
-        const hfr::blend::V3 U = { -R0.x * sr + U0.x * cr, -R0.y * sr + U0.y * cr, -R0.z * sr + U0.z * cr };
 
-        // In NFSMW's coordinate & projection system, vertical elevation ascends along -U
-        s_pos.x += (F.x * moveFwd + R.x * moveRight - U.x * moveUp) * speed * dt;
-        s_pos.y += (F.y * moveFwd + R.y * moveRight - U.y * moveUp) * speed * dt;
-        s_pos.z += (F.z * moveFwd + R.z * moveRight - U.z * moveUp) * speed * dt;
+        // Horizontal flight along F and R; vertical elevation along pure world +Y
+        s_pos.x += (F.x * moveFwd + R.x * moveRight) * speed * dt;
+        s_pos.y += (F.y * moveFwd + R.y * moveRight + moveUp) * speed * dt;
+        s_pos.z += (F.z * moveFwd + R.z * moveRight) * speed * dt;
     }
 
     bool HandleEvent(const SDL_Event& e)
@@ -504,7 +497,7 @@ namespace game::photo_mode
             if (s_mouseLooking)
             {
                 s_yaw += (s_invertLookX ? -1.0f : 1.0f) * e.motion.xrel * 0.003f;
-                s_pitch += (s_invertLookY ? -1.0f : 1.0f) * e.motion.yrel * 0.003f;
+                s_pitch -= (s_invertLookY ? -1.0f : 1.0f) * e.motion.yrel * 0.003f;
                 s_pitch = std::clamp(s_pitch, -1.55f, 1.55f);
                 return true;
             }

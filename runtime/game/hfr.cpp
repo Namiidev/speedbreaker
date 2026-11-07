@@ -1451,7 +1451,7 @@ SB_HOOK(sub_8243EAC0)
     if (view)
     {
         const uint32_t viewId = PPC_LOAD_U32(view + 4);
-        if (viewId == 1 || viewId == 2)
+        if (viewId == 1)
         {
             if (const uint32_t camera = PPC_LOAD_U32(view + 64))
             {

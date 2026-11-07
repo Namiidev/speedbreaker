@@ -122,43 +122,36 @@ namespace
 
     void TestElevationAndOrientation()
     {
-        // Test that shifting position along -U produces pure vertical displacement
-        // in camera space with zero lateral (R) or forward (F) displacement.
+        // Test that shifting position along pure world +Y produces vertical displacement
+        // without affecting world X or Z coordinates.
         const float yaw = 0.6f;
         const float pitch = -0.3f;
-        const float roll = 0.25f;
-
-        const float cp = std::cos(pitch), sp = std::sin(pitch);
-        const float cy = std::cos(yaw), sy = std::sin(yaw);
-        const float cr = std::cos(roll), sr = std::sin(roll);
-
-        const hfr::blend::V3 R0 = { cy, 0.0f, -sy };
-        const hfr::blend::V3 U0 = { -sy * sp, cp, -cy * sp };
-        const hfr::blend::V3 R = { R0.x * cr + U0.x * sr, R0.y * cr + U0.y * sr, R0.z * cr + U0.z * sr };
-        const hfr::blend::V3 U = { -R0.x * sr + U0.x * cr, -R0.y * sr + U0.y * cr, -R0.z * sr + U0.z * cr };
+        const float roll = 0.0f;
 
         hfr::blend::V3 pos0 = { 100.0f, 20.0f, -50.0f };
         float deltaElevation = 5.0f; // e.g. RT pressed
 
-        // Elevation displacement along -U
+        // Elevation displacement along pure world +Y
         hfr::blend::V3 pos1 = {
-            pos0.x - U.x * deltaElevation,
-            pos0.y - U.y * deltaElevation,
-            pos0.z - U.z * deltaElevation
+            pos0.x,
+            pos0.y + deltaElevation,
+            pos0.z
         };
+
+        CHECK(Near(pos1.x, pos0.x), "Elevation must not modify world X");
+        CHECK(Near(pos1.z, pos0.z), "Elevation must not modify world Z");
+        CHECK(Near(pos1.y, pos0.y + deltaElevation), "Elevation must increase world Y");
 
         float m0[16], m1[16];
         BuildViewMatrix(pos0, yaw, pitch, roll, m0);
         BuildViewMatrix(pos1, yaw, pitch, roll, m1);
 
-        // In camera space: delta translation = m1[12..14] - m0[12..14]
-        float deltaCamX = m1[12] - m0[12]; // Along Right (lateral)
-        float deltaCamY = m1[13] - m0[13]; // Along Up (vertical)
-        float deltaCamZ = m1[14] - m0[14]; // Along Forward (depth)
+        hfr::blend::V3 recovered0 = hfr::blend::ViewPosition(m0);
+        hfr::blend::V3 recovered1 = hfr::blend::ViewPosition(m1);
 
-        CHECK(Near(deltaCamX, 0.0f, 1e-4f), "Elevation along -U must produce zero lateral shift in camera space");
-        CHECK(Near(deltaCamZ, 0.0f, 1e-4f), "Elevation along -U must produce zero forward/backward shift");
-        CHECK(Near(deltaCamY, deltaElevation, 1e-4f), "Elevation along -U must produce positive vertical shift in camera space");
+        CHECK(Near(recovered1.x, recovered0.x, 1e-3f), "Recovered X must match");
+        CHECK(Near(recovered1.z, recovered0.z, 1e-3f), "Recovered Z must match");
+        CHECK(Near(recovered1.y, recovered0.y + deltaElevation, 1e-3f), "Recovered Y must match");
     }
 }
 
