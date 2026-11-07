@@ -8,6 +8,7 @@
 #include <ui/ui.h>
 #include <user/settings.h>
 #include <kernel/function.h>
+#include <hid/input.h>
 #include <imgui.h>
 
 #include <algorithm>
@@ -29,6 +30,13 @@ namespace game::photo_mode
         std::atomic<bool> s_freezeWorld{ true };
         std::atomic<bool> s_hideHud{ true };
         std::atomic<bool> s_showOverlay{ true };
+        std::atomic<bool> s_invertLookY{ false };
+        std::atomic<bool> s_invertLookX{ false };
+
+        // Diagnostic readings for on-screen telemetry
+        float s_dbgLx = 0.0f, s_dbgLy = 0.0f;
+        float s_dbgRx = 0.0f, s_dbgRy = 0.0f;
+        float s_dbgLt = 0.0f, s_dbgRt = 0.0f;
 
         // Camera pose in world coordinates (+X right, +Y up, +Z forward)
         hfr::blend::V3 s_pos{ 0.0f, 0.0f, 0.0f };
@@ -278,18 +286,72 @@ namespace game::photo_mode
         if (s_keyDown)
             moveUp -= 1.0f;
 
-        // Add stick movements
-        moveFwd += -s_stickMoveY;
-        moveRight += s_stickMoveX;
-        moveUp += (s_triggerUp - s_triggerDown);
-
-        // Controller look
-        if (std::abs(s_stickLookX) > 0.05f)
-            s_yaw += s_stickLookX * 2.2f * dt;
-        if (std::abs(s_stickLookY) > 0.05f)
+        // Controller sampling: direct per-frame polling matching hid::Update()
+        if (SDL_Gamepad* pad = hid::GetGamepad())
         {
-            s_pitch -= s_stickLookY * 1.8f * dt;
-            s_pitch = std::clamp(s_pitch, -1.55f, 1.55f);
+            auto axis = [&](SDL_GamepadAxis a) {
+                return float(SDL_GetGamepadAxis(pad, a)) / 32767.0f;
+            };
+
+            const float lx = axis(SDL_GAMEPAD_AXIS_LEFTX);
+            const float ly = axis(SDL_GAMEPAD_AXIS_LEFTY);
+            const float rx = axis(SDL_GAMEPAD_AXIS_RIGHTX);
+            const float ry = axis(SDL_GAMEPAD_AXIS_RIGHTY);
+            const float lt = std::clamp(axis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER), 0.0f, 1.0f);
+            const float rt = std::clamp(axis(SDL_GAMEPAD_AXIS_RIGHT_TRIGGER), 0.0f, 1.0f);
+
+            s_dbgLx = lx; s_dbgLy = ly;
+            s_dbgRx = rx; s_dbgRy = ry;
+            s_dbgLt = lt; s_dbgRt = rt;
+
+            // Left stick: lateral & forward flight
+            if (std::abs(lx) > 0.08f)
+                moveRight += (lx > 0.0f ? (lx - 0.08f) : (lx + 0.08f)) / 0.92f;
+            if (std::abs(ly) > 0.08f)
+                moveFwd -= (ly > 0.0f ? (ly - 0.08f) : (ly + 0.08f)) / 0.92f;
+
+            // Triggers: elevation (RT ascends, LT descends)
+            if (rt > 0.04f)
+                moveUp += (rt - 0.04f) / 0.96f;
+            if (lt > 0.04f)
+                moveUp -= (lt - 0.04f) / 0.96f;
+
+            // Shoulder buttons: speed modifiers
+            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER))
+                speed *= 4.0f;
+            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER))
+                speed *= 0.2f;
+
+            // Right stick: camera look rotation
+            if (std::abs(rx) > 0.08f)
+            {
+                float normRx = (rx > 0.0f ? (rx - 0.08f) : (rx + 0.08f)) / 0.92f;
+                s_yaw += (s_invertLookX ? -1.0f : 1.0f) * normRx * 2.2f * dt;
+            }
+            if (std::abs(ry) > 0.08f)
+            {
+                float normRy = (ry > 0.0f ? (ry - 0.08f) : (ry + 0.08f)) / 0.92f;
+                // SDL stick UP is ry < 0. Adding normRy to s_pitch decreases s_pitch,
+                // which tilts camera UP in NFSMW's coordinate & projection system.
+                float pitchDelta = (s_invertLookY ? -1.0f : 1.0f) * normRy * 1.8f * dt;
+                s_pitch += pitchDelta;
+                s_pitch = std::clamp(s_pitch, -1.55f, 1.55f);
+            }
+        }
+        else
+        {
+            // Fallback for events if gamepad polling is not ready
+            moveFwd += -s_stickMoveY;
+            moveRight += s_stickMoveX;
+            moveUp += (s_triggerUp - s_triggerDown);
+
+            if (std::abs(s_stickLookX) > 0.05f)
+                s_yaw += (s_invertLookX ? -1.0f : 1.0f) * s_stickLookX * 2.2f * dt;
+            if (std::abs(s_stickLookY) > 0.05f)
+            {
+                s_pitch += (s_invertLookY ? -1.0f : 1.0f) * s_stickLookY * 1.8f * dt;
+                s_pitch = std::clamp(s_pitch, -1.55f, 1.55f);
+            }
         }
 
         // Roll
@@ -307,11 +369,12 @@ namespace game::photo_mode
         const hfr::blend::V3 R0 = { cy, 0.0f, -sy };
         const hfr::blend::V3 U0 = { -sy * sp, cp, -cy * sp };
         const hfr::blend::V3 R = { R0.x * cr + U0.x * sr, R0.y * cr + U0.y * sr, R0.z * cr + U0.z * sr };
-        const hfr::blend::V3 U_world = { 0.0f, 1.0f, 0.0f };
+        const hfr::blend::V3 U = { -R0.x * sr + U0.x * cr, -R0.y * sr + U0.y * cr, -R0.z * sr + U0.z * cr };
 
-        s_pos.x += (F.x * moveFwd + R.x * moveRight + U_world.x * moveUp) * speed * dt;
-        s_pos.y += (F.y * moveFwd + R.y * moveRight + U_world.y * moveUp) * speed * dt;
-        s_pos.z += (F.z * moveFwd + R.z * moveRight + U_world.z * moveUp) * speed * dt;
+        // In NFSMW's coordinate & projection system, vertical elevation ascends along -U
+        s_pos.x += (F.x * moveFwd + R.x * moveRight - U.x * moveUp) * speed * dt;
+        s_pos.y += (F.y * moveFwd + R.y * moveRight - U.y * moveUp) * speed * dt;
+        s_pos.z += (F.z * moveFwd + R.z * moveRight - U.z * moveUp) * speed * dt;
     }
 
     bool HandleEvent(const SDL_Event& e)
@@ -390,6 +453,14 @@ namespace game::photo_mode
                 if (down)
                     s_roll = 0.0f;
                 return true;
+            case SDLK_I:
+                if (down)
+                {
+                    bool newVal = !s_invertLookY.load(std::memory_order_relaxed);
+                    s_invertLookY.store(newVal, std::memory_order_relaxed);
+                    ui::Toast(newVal ? "Invertir Mirada Y: Activado" : "Invertir Mirada Y: Desactivado");
+                }
+                return true;
             case SDLK_H:
                 if (down)
                     s_showOverlay.store(!s_showOverlay.load(std::memory_order_relaxed), std::memory_order_relaxed);
@@ -432,8 +503,8 @@ namespace game::photo_mode
         {
             if (s_mouseLooking)
             {
-                s_yaw += e.motion.xrel * 0.003f;
-                s_pitch -= e.motion.yrel * 0.003f;
+                s_yaw += (s_invertLookX ? -1.0f : 1.0f) * e.motion.xrel * 0.003f;
+                s_pitch += (s_invertLookY ? -1.0f : 1.0f) * e.motion.yrel * 0.003f;
                 s_pitch = std::clamp(s_pitch, -1.55f, 1.55f);
                 return true;
             }
@@ -595,8 +666,8 @@ namespace game::photo_mode
             return;
 
         const ImGuiViewport* vp = ImGui::GetMainViewport();
-        ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x + 20.0f, vp->WorkPos.y + vp->WorkSize.y - 120.0f), ImGuiCond_Always);
-        ImGui::SetNextWindowBgAlpha(0.65f);
+        ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x + 20.0f, vp->WorkPos.y + vp->WorkSize.y - 20.0f), ImGuiCond_Always, ImVec2(0.0f, 1.0f));
+        ImGui::SetNextWindowBgAlpha(0.70f);
 
         ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
                                  ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
@@ -608,10 +679,27 @@ namespace game::photo_mode
             ImGui::SameLine();
             ImGui::TextDisabled("| FOV: %.1f deg  Inclinacion: %.1f deg", s_fov * 360.0f / 65536.0f, s_roll * 180.0f / 3.14159f);
 
+            bool invY = s_invertLookY.load(std::memory_order_relaxed);
+            ImGui::SameLine();
+            if (ImGui::Checkbox("Invertir Y (Tecla I)", &invY))
+                s_invertLookY.store(invY, std::memory_order_relaxed);
+
+            bool invX = s_invertLookX.load(std::memory_order_relaxed);
+            ImGui::SameLine();
+            if (ImGui::Checkbox("Invertir X", &invX))
+                s_invertLookX.store(invX, std::memory_order_relaxed);
+
             ImGui::Separator();
             ImGui::Text("WASD / Stick Izq: Mover  |  Click Derecho / Stick Der: Mirar");
             ImGui::Text("Espacio / RT: Subir  |  C / LT: Bajar  |  Shift / RB: Turbo  |  Alt / LB: Precision");
             ImGui::Text("Q/E / D-pad: Rotar  |  R / R3: Restablecer  |  F12 / X: Tomar Foto  |  H / Y: Ayuda  |  P / B: Salir");
+
+            if (hid::GetGamepad() != nullptr)
+            {
+                ImGui::Separator();
+                ImGui::TextDisabled("Mando: LT: %.2f | RT: %.2f | Stick L: (%.2f, %.2f) | Stick R: (%.2f, %.2f)",
+                                    s_dbgLt, s_dbgRt, s_dbgLx, s_dbgLy, s_dbgRx, s_dbgRy);
+            }
         }
         ImGui::End();
     }

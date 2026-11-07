@@ -119,6 +119,47 @@ namespace
         CHECK(Near(computedYaw, expectedYaw, 1e-4f), "Decomposed yaw must match");
         CHECK(Near(computedRoll, expectedRoll, 1e-4f), "Decomposed roll must match");
     }
+
+    void TestElevationAndOrientation()
+    {
+        // Test that shifting position along -U produces pure vertical displacement
+        // in camera space with zero lateral (R) or forward (F) displacement.
+        const float yaw = 0.6f;
+        const float pitch = -0.3f;
+        const float roll = 0.25f;
+
+        const float cp = std::cos(pitch), sp = std::sin(pitch);
+        const float cy = std::cos(yaw), sy = std::sin(yaw);
+        const float cr = std::cos(roll), sr = std::sin(roll);
+
+        const hfr::blend::V3 R0 = { cy, 0.0f, -sy };
+        const hfr::blend::V3 U0 = { -sy * sp, cp, -cy * sp };
+        const hfr::blend::V3 R = { R0.x * cr + U0.x * sr, R0.y * cr + U0.y * sr, R0.z * cr + U0.z * sr };
+        const hfr::blend::V3 U = { -R0.x * sr + U0.x * cr, -R0.y * sr + U0.y * cr, -R0.z * sr + U0.z * cr };
+
+        hfr::blend::V3 pos0 = { 100.0f, 20.0f, -50.0f };
+        float deltaElevation = 5.0f; // e.g. RT pressed
+
+        // Elevation displacement along -U
+        hfr::blend::V3 pos1 = {
+            pos0.x - U.x * deltaElevation,
+            pos0.y - U.y * deltaElevation,
+            pos0.z - U.z * deltaElevation
+        };
+
+        float m0[16], m1[16];
+        BuildViewMatrix(pos0, yaw, pitch, roll, m0);
+        BuildViewMatrix(pos1, yaw, pitch, roll, m1);
+
+        // In camera space: delta translation = m1[12..14] - m0[12..14]
+        float deltaCamX = m1[12] - m0[12]; // Along Right (lateral)
+        float deltaCamY = m1[13] - m0[13]; // Along Up (vertical)
+        float deltaCamZ = m1[14] - m0[14]; // Along Forward (depth)
+
+        CHECK(Near(deltaCamX, 0.0f, 1e-4f), "Elevation along -U must produce zero lateral shift in camera space");
+        CHECK(Near(deltaCamZ, 0.0f, 1e-4f), "Elevation along -U must produce zero forward/backward shift");
+        CHECK(Near(deltaCamY, deltaElevation, 1e-4f), "Elevation along -U must produce positive vertical shift in camera space");
+    }
 }
 
 int main()
@@ -126,6 +167,7 @@ int main()
     TestOrthonormality();
     TestViewPositionInversion();
     TestAngleDecomposition();
+    TestElevationAndOrientation();
 
     if (s_failures == 0)
     {

@@ -1342,6 +1342,11 @@ namespace hid
 
         UpdateOtherPlayers(blocked, menuClosed, deadzone, triggerDeadzone, vibration, vibrationChanged, padTaken);
     }
+
+    SDL_Gamepad* GetGamepad()
+    {
+        return s_gamepad;
+    }
 }
 
 namespace

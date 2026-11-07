@@ -81,4 +81,6 @@ namespace hid
     // stops any rumble, Resume sends the game's last request again.
     void Suspend();
     void Resume();
+    // Main thread: player 1's currently active gamepad (or null if none).
+    SDL_Gamepad* GetGamepad();
 }
