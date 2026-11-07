@@ -38,10 +38,10 @@ namespace game::photo_mode
         float s_dbgRx = 0.0f, s_dbgRy = 0.0f;
         float s_dbgLt = 0.0f, s_dbgRt = 0.0f;
 
-        // Camera pose in world coordinates (+X right, +Y up, +Z forward)
+        // Camera pose in world coordinates (+X right, +Y forward, +Z up)
         hfr::blend::V3 s_pos{ 0.0f, 0.0f, 0.0f };
-        float s_yaw = 0.0f;    // Radians around global Y (+Y up)
-        float s_pitch = 0.0f;  // Radians elevation (clamped)
+        float s_yaw = 0.0f;    // Radians in horizontal plane around +Z
+        float s_pitch = 0.0f;  // Radians elevation above ground (clamped)
         float s_roll = 0.0f;   // Radians camera tilt around Forward vector
         float s_fov = 10923.0f; // 16-bit angle (~60 deg)
 
@@ -178,9 +178,9 @@ namespace game::photo_mode
             const float fx = F.x / flen;
             const float fy = F.y / flen;
             const float fz = F.z / flen;
-            // NFSMW coordinates: +X right, +Y up, +Z forward
-            s_pitch = std::asin(std::clamp(fy, -0.999f, 0.999f));
-            s_yaw = std::atan2(fx, fz);
+            // NFSMW coordinates: +X right, +Y forward, +Z up
+            s_pitch = std::asin(std::clamp(fz, -0.999f, 0.999f));
+            s_yaw = std::atan2(fx, fy);
         }
         else
         {
@@ -212,12 +212,12 @@ namespace game::photo_mode
         const float cy = std::cos(s_yaw), sy = std::sin(s_yaw);
         const float cr = std::cos(s_roll), sr = std::sin(s_roll);
 
-        // Forward vector in NFSMW (+X right, +Y up, +Z forward)
-        const hfr::blend::V3 F = { sy * cp, sp, cy * cp };
+        // Forward vector in NFSMW (+X right, +Y forward, +Z up)
+        const hfr::blend::V3 F = { cp * sy, cp * cy, sp };
         // Horizontal right vector (at roll = 0)
-        const hfr::blend::V3 R0 = { cy, 0.0f, -sy };
-        // Up vector (at roll = 0) = F x R0
-        const hfr::blend::V3 U0 = { -sy * sp, cp, -cy * sp };
+        const hfr::blend::V3 R0 = { cy, -sy, 0.0f };
+        // Up vector (at roll = 0) = R0 x F
+        const hfr::blend::V3 U0 = { -sp * sy, -sp * cy, cp };
 
         // Apply roll around F
         const hfr::blend::V3 R = { R0.x * cr + U0.x * sr, R0.y * cr + U0.y * sr, R0.z * cr + U0.z * sr };
@@ -359,15 +359,15 @@ namespace game::photo_mode
         const float cy = std::cos(s_yaw), sy = std::sin(s_yaw);
         const float cr = std::cos(s_roll), sr = std::sin(s_roll);
 
-        const hfr::blend::V3 F = { sy * cp, sp, cy * cp };
-        const hfr::blend::V3 R0 = { cy, 0.0f, -sy };
-        const hfr::blend::V3 U0 = { -sy * sp, cp, -cy * sp };
+        const hfr::blend::V3 F = { cp * sy, cp * cy, sp };
+        const hfr::blend::V3 R0 = { cy, -sy, 0.0f };
+        const hfr::blend::V3 U0 = { -sp * sy, -sp * cy, cp };
         const hfr::blend::V3 R = { R0.x * cr + U0.x * sr, R0.y * cr + U0.y * sr, R0.z * cr + U0.z * sr };
 
-        // Horizontal flight along F and R; vertical elevation along pure world +Y
+        // Horizontal flight along F and R; vertical elevation along pure world +Z
         s_pos.x += (F.x * moveFwd + R.x * moveRight) * speed * dt;
-        s_pos.y += (F.y * moveFwd + R.y * moveRight + moveUp) * speed * dt;
-        s_pos.z += (F.z * moveFwd + R.z * moveRight) * speed * dt;
+        s_pos.y += (F.y * moveFwd + R.y * moveRight) * speed * dt;
+        s_pos.z += (F.z * moveFwd + R.z * moveRight + moveUp) * speed * dt;
     }
 
     bool HandleEvent(const SDL_Event& e)

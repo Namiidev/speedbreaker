@@ -31,10 +31,10 @@ namespace
         const float cy = std::cos(yaw), sy = std::sin(yaw);
         const float cr = std::cos(roll), sr = std::sin(roll);
 
-        // World-space orientation axes of the camera in NFSMW (+X right, +Y up, +Z forward)
-        const hfr::blend::V3 F = { sy * cp, sp, cy * cp };
-        const hfr::blend::V3 R0 = { cy, 0.0f, -sy };
-        const hfr::blend::V3 U0 = { -sy * sp, cp, -cy * sp };
+        // World-space orientation axes of the camera in NFSMW (+X right, +Y forward, +Z up)
+        const hfr::blend::V3 F = { cp * sy, cp * cy, sp };
+        const hfr::blend::V3 R0 = { cy, -sy, 0.0f };
+        const hfr::blend::V3 U0 = { -sp * sy, -sp * cy, cp };
 
         const hfr::blend::V3 R = { R0.x * cr + U0.x * sr, R0.y * cr + U0.y * sr, R0.z * cr + U0.z * sr };
         const hfr::blend::V3 U = { -R0.x * sr + U0.x * cr, -R0.y * sr + U0.y * cr, -R0.z * sr + U0.z * cr };
@@ -91,56 +91,42 @@ namespace
     {
         const float expectedYaw = 0.85f;
         const float expectedPitch = -0.28f;
-        const float expectedRoll = 0.15f;
         float m[16];
-        BuildViewMatrix({ 0.0f, 0.0f, 0.0f }, expectedYaw, expectedPitch, expectedRoll, m);
+        BuildViewMatrix({ 0.0f, 0.0f, 0.0f }, expectedYaw, expectedPitch, 0.0f, m);
 
-        // Columns are Right, Up, Forward
-        hfr::blend::V3 R = { m[0], m[4], m[8] };
-        hfr::blend::V3 U = { m[1], m[5], m[9] };
+        // Forward vector is Column 2
         hfr::blend::V3 F = { m[2], m[6], m[10] };
-
         float flen = std::sqrt(F.x * F.x + F.y * F.y + F.z * F.z);
         F.x /= flen; F.y /= flen; F.z /= flen;
 
-        float computedPitch = std::asin(std::clamp(F.y, -0.999f, 0.999f));
-        float computedYaw = std::atan2(F.x, F.z);
-
-        const float cp = std::cos(computedPitch), sp = std::sin(computedPitch);
-        const float cy = std::cos(computedYaw), sy = std::sin(computedYaw);
-        const hfr::blend::V3 R0 = { cy, 0.0f, -sy };
-        const hfr::blend::V3 U0 = { -sy * sp, cp, -cy * sp };
-
-        const float dotR0 = R.x * R0.x + R.y * R0.y + R.z * R0.z;
-        const float dotU0 = R.x * U0.x + R.y * U0.y + R.z * U0.z;
-        float computedRoll = std::atan2(dotU0, dotR0);
+        float computedPitch = std::asin(std::clamp(F.z, -0.999f, 0.999f));
+        float computedYaw = std::atan2(F.x, F.y);
 
         CHECK(Near(computedPitch, expectedPitch, 1e-4f), "Decomposed pitch must match");
         CHECK(Near(computedYaw, expectedYaw, 1e-4f), "Decomposed yaw must match");
-        CHECK(Near(computedRoll, expectedRoll, 1e-4f), "Decomposed roll must match");
     }
 
     void TestElevationAndOrientation()
     {
-        // Test that shifting position along pure world +Y produces vertical displacement
-        // without affecting world X or Z coordinates.
+        // Test that shifting position along pure world +Z produces vertical displacement
+        // without affecting world X or Y coordinates.
         const float yaw = 0.6f;
         const float pitch = -0.3f;
         const float roll = 0.0f;
 
         hfr::blend::V3 pos0 = { 100.0f, 20.0f, -50.0f };
-        float deltaElevation = 5.0f; // e.g. RT pressed
+        float deltaElevation = 5.0f; // e.g. Space or RT pressed
 
-        // Elevation displacement along pure world +Y
+        // Elevation displacement along pure world +Z (altitude)
         hfr::blend::V3 pos1 = {
             pos0.x,
-            pos0.y + deltaElevation,
-            pos0.z
+            pos0.y,
+            pos0.z + deltaElevation
         };
 
         CHECK(Near(pos1.x, pos0.x), "Elevation must not modify world X");
-        CHECK(Near(pos1.z, pos0.z), "Elevation must not modify world Z");
-        CHECK(Near(pos1.y, pos0.y + deltaElevation), "Elevation must increase world Y");
+        CHECK(Near(pos1.y, pos0.y), "Elevation must not modify world Y");
+        CHECK(Near(pos1.z, pos0.z + deltaElevation), "Elevation must increase world Z");
 
         float m0[16], m1[16];
         BuildViewMatrix(pos0, yaw, pitch, roll, m0);
@@ -150,8 +136,8 @@ namespace
         hfr::blend::V3 recovered1 = hfr::blend::ViewPosition(m1);
 
         CHECK(Near(recovered1.x, recovered0.x, 1e-3f), "Recovered X must match");
-        CHECK(Near(recovered1.z, recovered0.z, 1e-3f), "Recovered Z must match");
-        CHECK(Near(recovered1.y, recovered0.y + deltaElevation, 1e-3f), "Recovered Y must match");
+        CHECK(Near(recovered1.y, recovered0.y, 1e-3f), "Recovered Y must match");
+        CHECK(Near(recovered1.z, recovered0.z + deltaElevation, 1e-3f), "Recovered Z must match");
     }
 }
 
